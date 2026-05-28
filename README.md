@@ -36,9 +36,8 @@ This project automates solar panel inspections by training a deep learning model
 Here is the interactive Streamlit interface where field operators can drag-and-drop solar panel images to get instant diagnostic results and actionable alerts.
 
 ### Streamlit Web App
-> [!NOTE]
-> *Add a screenshot of your running Streamlit app here!*
-![Streamlit App Diagnostic UI](https://via.placeholder.com/800x450.png?text=Placeholder:+Streamlit+App+UI+Screenshot+Here)
+<img width="1895" height="877" alt="image" src="https://github.com/user-attachments/assets/f17e6aba-e4d5-4a62-bc74-36a96b9fd5aa" />
+
 
 ### Model Evaluation (Confusion Matrix)
 The confusion matrix showing how well the final model differentiates between different types of defects:
