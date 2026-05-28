@@ -187,6 +187,9 @@ Ensure you have Docker installed and running on your system.
 ---
 
 ## Future Improvements
-* **Active Learning:** Set up a pipeline to upload false-positive/negative classification images back to a labeling storage bucket to continuously retrain the model.
+
 * **Drone Camera Integration:** Package the classification system as a lightweight API (using FastAPI) to receive real-time streaming inputs directly from drone hardware during field flights.
-* **EfficientNet Backbone:** Test more modern backbones like EfficientNetV2 to achieve similar (or better) accuracy with a smaller model size.
+* **Active Learning Pipeline:** Automatically collect uncertain or misclassified samples for human review and continuous model retraining.
+* **Monitoring Dashboard:** Build a centralized monitoring dashboard to track inspection history, defect statistics, and maintenance alerts across solar farms.
+* **Multi-Defect Detection:** Support simultaneous detection of multiple defects in a single solar panel image.
+
