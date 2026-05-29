@@ -39,34 +39,51 @@ except Exception:
     GOOGLE_DRIVE_FILE_ID = "YOUR_GOOGLE_DRIVE_FILE_ID_HERE"
 # ==========================================
 
-def download_model_from_drive(file_id, dest_path):
-    """Downloads a large file from Google Drive bypassing the virus scan warning."""
-    URL = "https://docs.google.com/uc?export=download"
+def extract_gdrive_id(url_or_id):
+    """Extracts the file ID from a full Google Drive URL if provided."""
+    if "drive.google.com" in url_or_id:
+        if "/d/" in url_or_id:
+            return url_or_id.split("/d/")[1].split("/")[0]
+        if "id=" in url_or_id:
+            return url_or_id.split("id=")[1].split("&")[0]
+    return url_or_id
+
+def download_model_from_url(url_or_id, dest_path):
+    """Downloads the model from a direct URL (Dropbox/Hugging Face/etc.) or a Google Drive ID."""
     session = requests.Session()
+    url_or_id = url_or_id.strip()
     
-    # Send first request to get the warning cookie token
-    response = session.get(URL, params={'id': file_id}, stream=True)
-    if response.status_code != 200:
-        raise ValueError(f"Google Drive returned status code {response.status_code}. Check if the File ID is correct.")
+    # 1. Google Drive Mode
+    if "drive.google.com" in url_or_id or (not url_or_id.startswith("http") and len(url_or_id) > 15):
+        file_id = extract_gdrive_id(url_or_id)
+        URL = "https://docs.google.com/uc?export=download"
         
-    token = None
-    for key, value in response.cookies.items():
-        if key.startswith('download_warning'):
-            token = value
-            break
-            
-    # If warning cookie exists, send request with confirmation token
-    if token:
-        params = {'id': file_id, 'confirm': token}
-        response = session.get(URL, params=params, stream=True)
+        response = session.get(URL, params={'id': file_id}, stream=True)
         if response.status_code != 200:
-            raise ValueError(f"Google Drive confirmation request returned status code {response.status_code}.")
+            raise ValueError(f"Google Drive returned status code {response.status_code}. "
+                             "Please verify that the file sharing permissions are set to 'Anyone with the link can view' (Viewer).")
+            
+        token = None
+        for key, value in response.cookies.items():
+            if key.startswith('download_warning'):
+                token = value
+                break
+                
+        if token:
+            params = {'id': file_id, 'confirm': token}
+            response = session.get(URL, params=params, stream=True)
+            if response.status_code != 200:
+                raise ValueError(f"Google Drive confirmation request returned status code {response.status_code}.")
+    
+    # 2. Direct Link Mode (Dropbox, Hugging Face, raw link)
+    else:
+        response = session.get(url_or_id, stream=True)
+        if response.status_code != 200:
+            raise ValueError(f"Direct download link returned status code {response.status_code}.")
 
     # Save the file streamingly to prevent memory overflow
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
     
-    # Check if the download returned an HTML page instead of the binary model file
-    # (Google Drive returns HTML pages for permission/access errors)
     is_html = False
     temp_dest = dest_path + ".tmp"
     with open(temp_dest, "wb") as f:
@@ -82,9 +99,9 @@ def download_model_from_drive(file_id, dest_path):
     if is_html:
         if os.path.exists(temp_dest):
             os.remove(temp_dest)
-        raise ValueError("Google Drive returned an HTML page instead of the model file. "
-                         "This usually means the File ID is incorrect, or the link sharing permissions "
-                         "on Google Drive are not set to 'Anyone with the link can view'.")
+        raise ValueError("The download request returned an HTML page instead of the model file. "
+                         "If using Google Drive, make sure the file is shared publicly. "
+                         "If using Dropbox, make sure the link ends with dl=1.")
                          
     # Rename temp file to actual file path
     if os.path.exists(dest_path):
@@ -93,7 +110,7 @@ def download_model_from_drive(file_id, dest_path):
 
 @st.cache_resource
 def load_classifier_model():
-    """Loads the trained model, downloading it from Google Drive if missing."""
+    """Loads the trained model, downloading it from Google Drive or a direct URL if missing."""
     # 1. Clean up corrupted or partial downloads (files smaller than 10MB)
     if os.path.exists(MODEL_PATH):
         if os.path.getsize(MODEL_PATH) < 10 * 1024 * 1024:
@@ -107,11 +124,11 @@ def load_classifier_model():
             return None
             
         try:
-            with st.spinner("Downloading model weights from Google Drive (223 MB)... This may take a minute but only happens once."):
-                download_model_from_drive(GOOGLE_DRIVE_FILE_ID, MODEL_PATH)
+            with st.spinner("Downloading model weights (223 MB)... This may take a minute but only happens once."):
+                download_model_from_url(GOOGLE_DRIVE_FILE_ID, MODEL_PATH)
             st.success("Model downloaded successfully!")
         except Exception as e:
-            st.error("Failed to download model weights from Google Drive. Please double check that your Google Drive link sharing permissions are set to 'Anyone with the link can view' (Viewer).")
+            st.error("Failed to download model weights. If using Google Drive, make sure permissions are set to 'Anyone with the link'. If using Dropbox, ensure dl=1 is at the end of the URL.")
             st.exception(e)
             # Make sure we clean up any partial file if download crashed
             if os.path.exists(MODEL_PATH):
