@@ -7,7 +7,7 @@
 
 An automated deep learning system that detects and classifies solar panel defects from drone and field inspection images. 
 
-🔗 **Live Deployment:** [View Live App Demo Placeholder](https://solar-panel-defect-classification-czs4jzed7ap3hphjt3ufaa.streamlit.app) *(Replace this with your actual streamlit link once deployed)*
+🔗 **Live Deployment:** [View Live App Demo](https://solar-panel-defect-classification-czs4jzed7ap3hphjt3ufaa.streamlit.app) 
 
 ---
 
