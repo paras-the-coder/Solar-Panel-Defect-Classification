@@ -29,8 +29,14 @@ MODEL_PATH = 'models/best_model.keras'
 # ==========================================
 # GOOGLE DRIVE CONFIGURATION
 # ==========================================
-
-GOOGLE_DRIVE_FILE_ID = st.secrets["GOOGLE_DRIVE_FILE_ID"]
+# Try to load the file ID from Streamlit secrets (for cloud deployment),
+# otherwise fallback to the hardcoded value (for local runs).
+try:
+    GOOGLE_DRIVE_FILE_ID = st.secrets["GOOGLE_DRIVE_FILE_ID"]
+except Exception:
+    # Paste your Google Drive File ID here for local running if secrets.toml is not used.
+    # Example: GOOGLE_DRIVE_FILE_ID = "1A2B3C4D5E6F"
+    GOOGLE_DRIVE_FILE_ID = "YOUR_GOOGLE_DRIVE_FILE_ID_HERE"
 # ==========================================
 
 def download_model_from_drive(file_id, dest_path):
@@ -40,7 +46,9 @@ def download_model_from_drive(file_id, dest_path):
     
     # Send first request to get the warning cookie token
     response = session.get(URL, params={'id': file_id}, stream=True)
-    
+    if response.status_code != 200:
+        raise ValueError(f"Google Drive returned status code {response.status_code}. Check if the File ID is correct.")
+        
     token = None
     for key, value in response.cookies.items():
         if key.startswith('download_warning'):
@@ -51,21 +59,51 @@ def download_model_from_drive(file_id, dest_path):
     if token:
         params = {'id': file_id, 'confirm': token}
         response = session.get(URL, params=params, stream=True)
-        
+        if response.status_code != 200:
+            raise ValueError(f"Google Drive confirmation request returned status code {response.status_code}.")
+
     # Save the file streamingly to prevent memory overflow
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-    with open(dest_path, "wb") as f:
-        for chunk in response.iter_content(32768):
+    
+    # Check if the download returned an HTML page instead of the binary model file
+    # (Google Drive returns HTML pages for permission/access errors)
+    is_html = False
+    temp_dest = dest_path + ".tmp"
+    with open(temp_dest, "wb") as f:
+        for i, chunk in enumerate(response.iter_content(32768)):
             if chunk:
+                if i == 0:
+                    # Check first chunk for HTML indicators
+                    if b"<!DOCTYPE html>" in chunk or b"<html" in chunk:
+                        is_html = True
+                        break
                 f.write(chunk)
+                
+    if is_html:
+        if os.path.exists(temp_dest):
+            os.remove(temp_dest)
+        raise ValueError("Google Drive returned an HTML page instead of the model file. "
+                         "This usually means the File ID is incorrect, or the link sharing permissions "
+                         "on Google Drive are not set to 'Anyone with the link can view'.")
+                         
+    # Rename temp file to actual file path
+    if os.path.exists(dest_path):
+        os.remove(dest_path)
+    os.rename(temp_dest, dest_path)
 
 @st.cache_resource
 def load_classifier_model():
     """Loads the trained model, downloading it from Google Drive if missing."""
-    # 1. Check if model file exists locally
+    # 1. Clean up corrupted or partial downloads (files smaller than 10MB)
+    if os.path.exists(MODEL_PATH):
+        if os.path.getsize(MODEL_PATH) < 10 * 1024 * 1024:
+            st.warning("Detected incomplete or corrupted model weights file. Cleaning up and retrying download...")
+            os.remove(MODEL_PATH)
+
+    # 2. Check if model file exists locally
     if not os.path.exists(MODEL_PATH):
         if GOOGLE_DRIVE_FILE_ID == "YOUR_GOOGLE_DRIVE_FILE_ID_HERE":
-            st.error("Model file not found! Please configure your `GOOGLE_DRIVE_FILE_ID` in `app.py` so the app can download it on Streamlit Cloud.")
+            st.error("Model file not found! Please configure your `GOOGLE_DRIVE_FILE_ID` in `app.py` or Streamlit Secrets so the app can download it.")
             return None
             
         try:
@@ -73,8 +111,11 @@ def load_classifier_model():
                 download_model_from_drive(GOOGLE_DRIVE_FILE_ID, MODEL_PATH)
             st.success("Model downloaded successfully!")
         except Exception as e:
-            st.error("Failed to download model weights from Google Drive. Please double check your File ID and check that the link sharing permissions are set to 'Anyone with the link'.")
+            st.error("Failed to download model weights from Google Drive. Please double check that your Google Drive link sharing permissions are set to 'Anyone with the link can view' (Viewer).")
             st.exception(e)
+            # Make sure we clean up any partial file if download crashed
+            if os.path.exists(MODEL_PATH):
+                os.remove(MODEL_PATH)
             return None
 
     try:
@@ -87,7 +128,10 @@ def load_classifier_model():
         return model
     except Exception as e:
         st.error(f"Error loading model from relative path '{MODEL_PATH}'. "
-                 f"Please ensure the file is not corrupted and is an accessible `.keras` file.")
+                 f"The file might be corrupted. Cleaning up weights so it retries on the next reload.")
+        # Auto-delete corrupted file so it retries on next reload
+        if os.path.exists(MODEL_PATH):
+            os.remove(MODEL_PATH)
         st.exception(e)
         return None
 
