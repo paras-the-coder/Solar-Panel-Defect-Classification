@@ -30,7 +30,7 @@ MODEL_PATH = 'models/best_model.keras'
 # GOOGLE DRIVE CONFIGURATION
 # ==========================================
 
-GOOGLE_DRIVE_FILE_ID = "https://drive.google.com/file/d/117uwwVTKzfF1E4t0rEse1im6WcOWkj9P/view?usp=sharing"
+GOOGLE_DRIVE_FILE_ID = st.secrets["GOOGLE_DRIVE_FILE_ID"]
 # ==========================================
 
 def download_model_from_drive(file_id, dest_path):
